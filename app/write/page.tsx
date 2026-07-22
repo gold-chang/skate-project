@@ -8,10 +8,13 @@ export default function LessonWritePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
-  const [profiles, setProfiles] = useState<any[]>([]);
+  // DB 마스터 데이터 목록
+  const [students, setStudents] = useState<any[]>([]);
+  const [instructors, setInstructors] = useState<any[]>([]);
   const [spots, setSpots] = useState<any[]>([]);
   const [tricksList, setTricksList] = useState<any[]>([]);
 
+  // 폼 입력값
   const [studentName, setStudentName] = useState('');
   const [shopName, setShopName] = useState('스케이트보드 아카데미');
   const [instructorName, setInstructorName] = useState('');
@@ -26,6 +29,7 @@ export default function LessonWritePage() {
   const [selectedBadge, setSelectedBadge] = useState('성공');
   const [selectedTricks, setSelectedTricks] = useState<any[]>([]);
 
+  // 피드백 & 인스타 & 사진
   const [instructorNote, setInstructorNote] = useState('');
   const [nextGoal, setNextGoal] = useState('');
   const [instagramUrl, setInstagramUrl] = useState('');
@@ -38,12 +42,28 @@ export default function LessonWritePage() {
   }, []);
 
   const fetchInitialData = async () => {
+    // 1. 전체 프로필 불러오기
     const { data: profData } = await supabase.from('profiles').select('*').order('name');
-    if (profData) setProfiles(profData);
+    if (profData) {
+      // 강사도 수강생이 될 수 있으므로 전체 유저를 수강생 목록에 대입
+      setStudents(profData);
 
+      // is_instructor === true 인 유저만 강사 목록으로 필터링
+      const filteredInstructors = profData.filter((p) => p.is_instructor === true);
+      
+      // 만약 DB에 is_instructor로 지정된 강사가 아직 없다면 전체 목록 제공
+      if (filteredInstructors.length > 0) {
+        setInstructors(filteredInstructors);
+      } else {
+        setInstructors(profData);
+      }
+    }
+
+    // 2. 장소(spots) 목록
     const { data: spotData } = await supabase.from('spots').select('*').order('name');
     if (spotData) setSpots(spotData);
 
+    // 3. 기술(tricks) 목록
     const { data: trickData } = await supabase.from('tricks').select('*').order('name');
     if (trickData) setTricksList(trickData);
   };
@@ -56,10 +76,12 @@ export default function LessonWritePage() {
     }
   };
 
+  // 장소 필터링
   const filteredSpots = spots.filter((s) =>
     s.name.toLowerCase().includes(spotSearch.toLowerCase())
   );
 
+  // 트릭 필터링
   const filteredTricks = tricksList.filter(
     (t) =>
       t.name.toLowerCase().includes(trickSearch.toLowerCase()) &&
@@ -79,6 +101,7 @@ export default function LessonWritePage() {
     e.preventDefault();
 
     if (!studentName) return alert('수강생 이름을 선택해 주세요.');
+    if (!instructorName) return alert('담당 강사를 선택해 주세요.');
     if (!selectedSpot) return alert('연습 장소를 선택해 주세요.');
 
     setLoading(true);
@@ -86,6 +109,7 @@ export default function LessonWritePage() {
     try {
       let finalImageUrl: string | null = null;
 
+      // 1. 사진 파일 업로드
       if (imageFile) {
         const fileExt = imageFile.name.split('.').pop() || 'jpg';
         const fileName = `lesson_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
@@ -102,7 +126,7 @@ export default function LessonWritePage() {
         }
       }
 
-      // 1. 강습 피드백 테이블 저장
+      // 2. 강습 리포트 저장
       const { data: lessonData, error: dbError } = await supabase
         .from('lesson_reports')
         .insert([
@@ -110,7 +134,7 @@ export default function LessonWritePage() {
             shop_name: shopName,
             student_name: studentName,
             instructor_name: instructorName,
-            spot_id: selectedSpot.id, // UUID 장소 참조
+            spot_id: selectedSpot.id,
             lesson_round: lessonRound,
             instructor_note: instructorNote,
             next_goal: nextGoal,
@@ -123,7 +147,7 @@ export default function LessonWritePage() {
 
       if (dbError) throw dbError;
 
-      // 2. 선택한 트릭 교차 테이블(lesson_tricks) 등록
+      // 3. 교차 테이블(lesson_tricks) 매핑 저장
       if (selectedTricks.length > 0 && lessonData) {
         const trickRows = selectedTricks.map((t) => ({
           lesson_id: lessonData.id,
@@ -133,7 +157,7 @@ export default function LessonWritePage() {
         await supabase.from('lesson_tricks').insert(trickRows);
       }
 
-      alert('🎓 강습 피드백 리포트가 등록되었습니다!');
+      alert('🎓 강습 피드백 리포트가 성공적으로 등록되었습니다!');
       router.push('/');
     } catch (err: any) {
       alert('오류 발생: ' + err.message);
@@ -145,7 +169,10 @@ export default function LessonWritePage() {
   return (
     <div className="min-h-screen bg-[#FDFBF7] text-stone-800 flex flex-col items-center p-4 sm:p-6 font-sans">
       <header className="w-full max-w-md my-4 flex items-center justify-between">
-        <button onClick={() => router.push('/')} className="text-xs font-bold text-stone-500 hover:text-stone-900">
+        <button
+          onClick={() => router.push('/')}
+          className="text-xs font-bold text-stone-500 hover:text-stone-900"
+        >
           ← 취소
         </button>
         <span className="text-xs font-bold tracking-wider text-stone-600 bg-stone-200/60 px-3 py-1 rounded-full">
@@ -155,7 +182,7 @@ export default function LessonWritePage() {
 
       <main className="w-full max-w-md bg-white border border-stone-200/80 rounded-3xl p-6 shadow-sm">
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* 수강생 선택 */}
+          {/* 수강생 선택 (강사 포함 전체 스케이터) */}
           <div>
             <label className="block text-xs font-bold text-stone-600 mb-1">👤 수강생 이름 *</label>
             <select
@@ -165,7 +192,7 @@ export default function LessonWritePage() {
               required
             >
               <option value="">수강생 선택</option>
-              {profiles.map((p) => (
+              {students.map((p) => (
                 <option key={p.id} value={p.name}>
                   {p.name}
                 </option>
@@ -173,16 +200,22 @@ export default function LessonWritePage() {
             </select>
           </div>
 
-          {/* 강사 이름 */}
+          {/* 담당 강사 선택 (is_instructor 권한 유저) */}
           <div>
-            <label className="block text-xs font-bold text-stone-600 mb-1">🛹 담당 강사</label>
-            <input
-              type="text"
+            <label className="block text-xs font-bold text-stone-600 mb-1">🛹 담당 강사 *</label>
+            <select
               value={instructorName}
               onChange={(e) => setInstructorName(e.target.value)}
-              placeholder="예: 김코치"
               className="w-full p-3 bg-stone-50 border border-stone-200 rounded-2xl text-xs focus:outline-none"
-            />
+              required
+            >
+              <option value="">담당 강사 선택</option>
+              {instructors.map((inst) => (
+                <option key={inst.id} value={inst.name}>
+                  {inst.name} 코치
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* 📍 장소 검색 및 선택 */}
@@ -237,7 +270,7 @@ export default function LessonWritePage() {
               type="text"
               value={lessonRound}
               onChange={(e) => setLessonRound(e.target.value)}
-              placeholder="예: 1회차"
+              placeholder="예: 1회차 또는 원데이 클래스"
               className="w-full p-3 bg-stone-50 border border-stone-200 rounded-2xl text-xs focus:outline-none"
             />
           </div>
@@ -249,11 +282,11 @@ export default function LessonWritePage() {
               <select
                 value={selectedBadge}
                 onChange={(e) => setSelectedBadge(e.target.value)}
-                className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs focus:outline-none"
+                className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs focus:outline-none font-bold"
               >
-                <option value="성공">성공</option>
-                <option value="연습중">연습중</option>
-                <option value="완성도UP">완성도UP</option>
+                <option value="성공">뱃지: 성공</option>
+                <option value="연습중">뱃지: 연습중</option>
+                <option value="완성도UP">뱃지: 완성도UP</option>
               </select>
             </div>
 
@@ -295,7 +328,9 @@ export default function LessonWritePage() {
                     className="bg-stone-900 text-white text-xs px-3 py-1.5 rounded-full flex items-center gap-1.5 font-semibold"
                   >
                     <span>{trick.name}</span>
-                    <span className="text-[10px] bg-stone-700 px-1.5 py-0.2 rounded">{trick.badge}</span>
+                    <span className="text-[10px] bg-amber-400 text-stone-900 px-1.5 py-0.2 rounded font-extrabold">
+                      {trick.badge}
+                    </span>
                     <button
                       type="button"
                       onClick={() => handleRemoveTrick(trick.id)}
@@ -309,7 +344,7 @@ export default function LessonWritePage() {
             )}
           </div>
 
-          {/* 인스타 링크 */}
+          {/* 📸 인스타그램 링크 */}
           <div>
             <label className="block text-xs font-bold text-stone-600 mb-1">📸 인스타그램 게시물/릴스 링크</label>
             <input
@@ -317,18 +352,18 @@ export default function LessonWritePage() {
               value={instagramUrl}
               onChange={(e) => setInstagramUrl(e.target.value)}
               placeholder="https://www.instagram.com/p/..."
-              className="w-full p-3 bg-stone-50 border border-stone-200 rounded-2xl text-xs focus:outline-none"
+              className="w-full p-3 bg-stone-50 border border-stone-200 rounded-2xl text-xs focus:outline-none focus:border-pink-400"
             />
           </div>
 
-          {/* 사진 업로드 */}
+          {/* 📷 사진 첨부 */}
           <div>
             <label className="block text-xs font-bold text-stone-600 mb-1">📷 강습/자세 사진 첨부</label>
             <input
               type="file"
               accept="image/*"
               onChange={handleImageChange}
-              className="w-full text-xs text-stone-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-stone-100 file:text-stone-700"
+              className="w-full text-xs text-stone-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-stone-100 file:text-stone-700 hover:file:bg-stone-200"
             />
             {imagePreview && (
               <div className="mt-2 rounded-2xl overflow-hidden border border-stone-200 max-h-48 flex items-center justify-center bg-stone-50">
@@ -344,7 +379,7 @@ export default function LessonWritePage() {
               value={instructorNote}
               onChange={(e) => setInstructorNote(e.target.value)}
               rows={3}
-              placeholder="자세 개선점이나 피드백을 자유롭게 작성하세요."
+              placeholder="수강생의 자세 개선점이나 피드백을 적어주세요."
               className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl text-xs focus:outline-none resize-none leading-relaxed"
             />
           </div>
@@ -361,10 +396,11 @@ export default function LessonWritePage() {
             />
           </div>
 
+          {/* 제출 버튼 */}
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3.5 bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs rounded-2xl transition-all disabled:bg-stone-300"
+            className="w-full py-3.5 bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs rounded-2xl transition-all shadow-sm disabled:bg-stone-300"
           >
             {loading ? '저장 중...' : '🎓 강습 피드백 저장하기'}
           </button>

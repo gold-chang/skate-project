@@ -1,34 +1,39 @@
 'use client';
 
-import React, { useEffect, useState, use } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useEffect, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
-export default function LogDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const resolvedParams = use(params);
-  const id = resolvedParams.id;
+export default function LogDetailPage() {
+  const params = useParams();
   const router = useRouter();
+  const logId = params.id as string;
 
   const [log, setLog] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (id) {
-      fetchLogDetail(id);
-    }
-  }, [id]);
+    if (logId) fetchLogDetail();
+  }, [logId]);
 
-  const fetchLogDetail = async (logId: string) => {
+  const fetchLogDetail = async () => {
     setLoading(true);
+
+    // spots 및 log_tricks (tricks) 조인 쿼리
     const { data, error } = await supabase
       .from('skating_logs')
-      .select('*')
+      .select(`
+        *,
+        spots ( name ),
+        log_tricks (
+          tricks ( id, name, category )
+        )
+      `)
       .eq('id', logId)
       .single();
 
     if (error) {
-      alert('일지를 불러오는 중 오류가 발생했습니다.');
-      router.push('/');
+      console.error('일지 상세 조회 오류:', error);
     } else {
       setLog(data);
     }
@@ -36,11 +41,11 @@ export default function LogDetailPage({ params }: { params: Promise<{ id: string
   };
 
   const handleDelete = async () => {
-    if (!confirm('이 일지를 정말 삭제하시겠습니까?')) return;
+    if (!confirm('정말 이 개인 일지를 삭제하시겠습니까?')) return;
 
-    const { error } = await supabase.from('skating_logs').delete().eq('id', log.id);
+    const { error } = await supabase.from('skating_logs').delete().eq('id', logId);
     if (error) {
-      alert('삭제 중 오류 발생: ' + error.message);
+      alert('삭제 중 오류가 발생했습니다: ' + error.message);
     } else {
       alert('일지가 삭제되었습니다.');
       router.push('/');
@@ -49,13 +54,25 @@ export default function LogDetailPage({ params }: { params: Promise<{ id: string
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center text-xs text-stone-400">
-        일지 정보를 불러오는 중...
+      <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center text-stone-400 text-xs">
+        상세 정보를 불러오는 중...
       </div>
     );
   }
 
-  if (!log) return null;
+  if (!log) {
+    return (
+      <div className="min-h-screen bg-[#FDFBF7] flex flex-col items-center justify-center p-4">
+        <p className="text-xs text-stone-500 mb-4">해당 일지를 찾을 수 없습니다.</p>
+        <button
+          onClick={() => router.push('/')}
+          className="px-4 py-2 bg-stone-900 text-white rounded-xl text-xs font-bold"
+        >
+          메인으로 돌아가기
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] text-stone-800 flex flex-col items-center p-4 sm:p-6 font-sans">
@@ -67,100 +84,86 @@ export default function LogDetailPage({ params }: { params: Promise<{ id: string
           ← 목록으로
         </button>
         <span className="text-xs font-bold tracking-wider text-stone-600 bg-stone-200/60 px-3 py-1 rounded-full">
-          Session Detail
+          Skate Log Detail
         </span>
       </header>
 
       <main className="w-full max-w-md bg-white border border-stone-200/80 rounded-3xl p-6 shadow-sm space-y-6">
-        <div className="flex items-center justify-between pb-4 border-b border-stone-100">
+        {/* 헤더 정보 */}
+        <div className="flex items-start justify-between border-b border-stone-100 pb-4">
           <div>
-            <span className="text-[10px] font-bold text-stone-400 block uppercase tracking-wider">
-              SKATER
+            <span className="inline-block text-[10px] font-extrabold bg-stone-100 text-stone-700 px-2.5 py-0.5 rounded-full mb-1">
+              👤 {log.user_name}
             </span>
-            <h1 className="text-lg font-extrabold text-stone-900">{log.user_name}</h1>
+            <h1 className="text-base font-extrabold text-stone-900">
+              📍 {log.spots?.name || '장소 정보 없음'}
+            </h1>
           </div>
-          <div className="text-right">
-            <span className="text-[10px] font-bold text-stone-400 block uppercase tracking-wider">
-              DATE
-            </span>
-            <span className="text-xs font-bold text-stone-700">{log.session_date}</span>
-          </div>
+          <span className="text-xs font-semibold text-stone-400">{log.session_date}</span>
         </div>
 
-        {log.image_url ? (
-          <div className="space-y-2">
-            <span className="text-xs font-bold text-stone-600">📷 세션 사진</span>
-            <div className="rounded-2xl overflow-hidden border border-stone-200 bg-stone-50 max-h-96 flex items-center justify-center">
-              <a href={log.image_url} target="_blank" rel="noopener noreferrer" className="w-full">
-                <img
-                  src={log.image_url}
-                  alt="세션 사진"
-                  className="w-full h-auto max-h-96 object-contain hover:opacity-95 transition-opacity"
-                />
-              </a>
-            </div>
-          </div>
-        ) : (
-          <div className="bg-stone-50 border border-stone-100 rounded-2xl p-6 text-center text-xs text-stone-400">
-            등록된 사진이 없습니다.
+        {/* 사진 */}
+        {log.image_url && (
+          <div className="rounded-2xl overflow-hidden border border-stone-200/80 bg-stone-50 flex items-center justify-center">
+            <img src={log.image_url} alt="세션 사진" className="w-full h-auto object-cover max-h-80" />
           </div>
         )}
 
-        <div>
-          <span className="text-xs font-bold text-stone-600 block mb-1">📍 연습 장소</span>
-          <div className="bg-stone-50 p-3.5 rounded-2xl border border-stone-100 text-xs font-bold text-stone-800">
-            {log.spot_name}
-          </div>
-        </div>
-
-        {log.practiced_tricks && log.practiced_tricks.length > 0 && (
-          <div>
-            <span className="text-xs font-bold text-stone-600 block mb-2">🔥 연습한 트릭</span>
-            <div className="flex flex-wrap gap-1.5">
-              {log.practiced_tricks.map((trick: string, idx: number) => (
+        {/* 연습한 트릭 */}
+        <div className="space-y-2">
+          <h3 className="text-xs font-extrabold text-stone-900">🔥 연습한 트릭</h3>
+          {log.log_tricks && log.log_tricks.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {log.log_tricks.map((lt: any, idx: number) => (
                 <span
                   key={idx}
-                  className="bg-stone-100 text-stone-800 text-xs font-semibold px-3 py-1.5 rounded-full border border-stone-200/80"
+                  className="bg-stone-900 text-white text-xs px-3 py-1.5 rounded-full font-semibold flex items-center gap-1.5"
                 >
-                  {trick}
+                  <span>{lt.tricks?.name}</span>
+                  {lt.tricks?.category && (
+                    <span className="text-[9px] bg-stone-700 text-stone-300 px-1.5 py-0.2 rounded">
+                      {lt.tricks.category}
+                    </span>
+                  )}
                 </span>
               ))}
             </div>
+          ) : (
+            <p className="text-xs text-stone-400 bg-stone-50 p-3 rounded-2xl border border-stone-100">
+              기록된 트릭이 없습니다.
+            </p>
+          )}
+        </div>
+
+        {/* 메모 */}
+        <div className="space-y-2">
+          <h3 className="text-xs font-extrabold text-stone-900">📝 메모</h3>
+          <p className="text-xs text-stone-700 leading-relaxed bg-stone-50 p-4 rounded-2xl border border-stone-100 whitespace-pre-wrap">
+            {log.memo || '작성된 메모가 없습니다.'}
+          </p>
+        </div>
+
+        {/* 인스타 영상 */}
+        {log.instagram_url && (
+          <div className="pt-2">
+            <a
+              href={log.instagram_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full flex items-center justify-center gap-2 text-xs font-bold text-pink-600 bg-pink-50 hover:bg-pink-100 py-3 rounded-2xl border border-pink-100 transition-all"
+            >
+              📸 인스타그램 영상 확인하기 ↗
+            </a>
           </div>
         )}
 
-        {log.memo && (
-          <div>
-            <span className="text-xs font-bold text-stone-600 block mb-1">📝 메모</span>
-            <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100 text-xs text-stone-700 leading-relaxed whitespace-pre-wrap">
-              {log.memo}
-            </div>
-          </div>
-        )}
-
-        <div className="pt-2 space-y-2">
-          <button
-            onClick={() => {
-              if (navigator.share) {
-                navigator.share({
-                  title: `${log.user_name}의 스케이트 세션 일지`,
-                  url: window.location.href,
-                });
-              } else {
-                navigator.clipboard.writeText(window.location.href);
-                alert('일지 링크가 복사되었습니다!');
-              }
-            }}
-            className="w-full py-3 bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs rounded-2xl transition-all shadow-sm"
-          >
-            🔗 링크로 공유하기
-          </button>
-
+        {/* 삭제 버튼 */}
+        <div className="pt-4 border-t border-stone-100 flex justify-end">
           <button
             onClick={handleDelete}
-            className="w-full py-2.5 bg-stone-100 hover:bg-red-50 text-stone-400 hover:text-red-500 font-bold text-xs rounded-2xl transition-all"
+            className="text-xs font-bold text-stone-400 hover:text-red-500 transition-colors"
           >
-            🗑️ 일지 삭제하기
+            🗑 일지 삭제하기
           </button>
         </div>
       </main>
