@@ -8,42 +8,43 @@ export default function LogWritePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
-  // 프로필
+  // DB에서 불러온 목록
   const [profiles, setProfiles] = useState<any[]>([]);
-  const [selectedUser, setSelectedUser] = useState('');
-  const [customUser, setCustomUser] = useState('');
+  const [spots, setSpots] = useState<any[]>([]);
+  const [tricksList, setTricksList] = useState<any[]>([]);
 
-  // 입력 필드
+  // 폼 입력 상태
+  const [selectedUser, setSelectedUser] = useState('');
   const [sessionDate, setSessionDate] = useState(
     new Date().toISOString().split('T')[0]
   );
-  const [spotName, setSpotName] = useState('');
-  const [customSpot, setCustomSpot] = useState('');
+  const [selectedSpotId, setSelectedSpotId] = useState('');
 
-  // 트릭
-  const [tricks, setTricks] = useState<string[]>([]);
-  const [trickInput, setTrickInput] = useState('');
+  // 선택된 트릭 목록 (ID + Name 저장)
+  const [selectedTricks, setSelectedTricks] = useState<{ id: number; name: string }[]>([]);
+  const [trickSelectId, setTrickSelectId] = useState('');
 
-  // 메모 & 사진
   const [memo, setMemo] = useState('');
+  const [instagramUrl, setInstagramUrl] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
 
-  const spotOptions = [
-    '뚝섬 스케이트파크',
-    '보라매 스케이트파크',
-    '난지 스케이트파크',
-    '시흥 스케이트파크',
-    '직접 입력',
-  ];
-
   useEffect(() => {
-    fetchProfiles();
+    fetchInitialData();
   }, []);
 
-  const fetchProfiles = async () => {
-    const { data } = await supabase.from('profiles').select('*').order('name');
-    if (data) setProfiles(data);
+  const fetchInitialData = async () => {
+    // 1. 프로필
+    const { data: profData } = await supabase.from('profiles').select('*').order('name');
+    if (profData) setProfiles(profData);
+
+    // 2. DB 장소 목록 불러오기
+    const { data: spotData } = await supabase.from('spots').select('*').order('name');
+    if (spotData) setSpots(spotData);
+
+    // 3. DB 기술 목록 불러오기
+    const { data: trickData } = await supabase.from('tricks').select('*').order('name');
+    if (trickData) setTricksList(trickData);
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -54,73 +55,59 @@ export default function LogWritePage() {
     }
   };
 
+  // 기존 트릭 목록에서 선택하여 추가
   const handleAddTrick = () => {
-    if (!trickInput.trim()) return;
-    setTricks([...tricks, trickInput.trim()]);
-    setTrickInput('');
+    if (!trickSelectId) return;
+    const found = tricksList.find((t) => String(t.id) === trickSelectId);
+    if (found && !selectedTricks.some((t) => t.id === found.id)) {
+      setSelectedTricks([...selectedTricks, { id: found.id, name: found.name }]);
+    }
+    setTrickSelectId('');
   };
 
-  const handleRemoveTrick = (index: number) => {
-    setTricks(tricks.filter((_, i) => i !== index));
+  const handleRemoveTrick = (id: number) => {
+    setSelectedTricks(selectedTricks.filter((t) => t.id !== id));
   };
 
-  // 폼 제출 함수 (이미지 업로드 보장)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const finalUser = selectedUser === '직접 입력' ? customUser : selectedUser;
-    const finalSpot = spotName === '직접 입력' ? customSpot : spotName;
-
-    if (!finalUser.trim()) {
-      alert('스케이터 이름을 선택/입력해 주세요.');
-      return;
-    }
-    if (!finalSpot.trim()) {
-      alert('연습 장소를 선택/입력해 주세요.');
-      return;
-    }
+    if (!selectedUser) return alert('스케이터를 선택해 주세요.');
+    if (!selectedSpotId) return alert('연습 장소를 선택해 주세요.');
 
     setLoading(true);
 
     try {
       let finalImageUrl: string | null = null;
 
-      // 📷 1. 사진 파일이 있으면 Supabase Storage에 먼저 저장
       if (imageFile) {
         const fileExt = imageFile.name.split('.').pop() || 'jpg';
         const fileName = `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
 
         const { error: uploadError } = await supabase.storage
           .from('skate_photos')
-          .upload(fileName, imageFile, {
-            cacheControl: '3600',
-            upsert: true,
-          });
+          .upload(fileName, imageFile, { cacheControl: '3600', upsert: true });
 
-        if (uploadError) {
-          console.error('스토리지 업로드 오류:', uploadError);
-          alert('사진 업로드 실패: ' + uploadError.message);
-        } else {
-          // Public URL 가져오기
+        if (!uploadError) {
           const { data: urlData } = supabase.storage
             .from('skate_photos')
             .getPublicUrl(fileName);
-
-          if (urlData?.publicUrl) {
-            finalImageUrl = urlData.publicUrl;
-          }
+          if (urlData?.publicUrl) finalImageUrl = urlData.publicUrl;
         }
       }
 
-      // 📝 2. DB 저장 (image_url 포함)
+      const targetSpot = spots.find((s) => String(s.id) === selectedSpotId);
+
       const { error: dbError } = await supabase.from('skating_logs').insert([
         {
-          user_name: finalUser,
+          user_name: selectedUser,
           session_date: sessionDate,
-          spot_name: finalSpot,
-          practiced_tricks: tricks,
+          spot_id: Number(selectedSpotId), // 👈 spot_id 저장
+          spot_name: targetSpot?.name || '', // 하위 호환성 유지
+          practiced_tricks: selectedTricks.map((t) => t.name), // 이름배열 및 ID 매핑 저장
           memo: memo,
-          image_url: finalImageUrl, // 👈 보장된 URL 대입
+          image_url: finalImageUrl,
+          instagram_url: instagramUrl,
         },
       ]);
 
@@ -140,10 +127,7 @@ export default function LogWritePage() {
   return (
     <div className="min-h-screen bg-[#FDFBF7] text-stone-800 flex flex-col items-center p-4 sm:p-6 font-sans">
       <header className="w-full max-w-md my-4 flex items-center justify-between">
-        <button
-          onClick={() => router.push('/')}
-          className="text-xs font-bold text-stone-500 hover:text-stone-900"
-        >
+        <button onClick={() => router.push('/')} className="text-xs font-bold text-stone-500 hover:text-stone-900">
           ← 취소
         </button>
         <span className="text-xs font-bold tracking-wider text-stone-600 bg-stone-200/60 px-3 py-1 rounded-full">
@@ -155,13 +139,11 @@ export default function LogWritePage() {
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* 스케이터 선택 */}
           <div>
-            <label className="block text-xs font-bold text-stone-600 mb-1">
-              👤 스케이터 *
-            </label>
+            <label className="block text-xs font-bold text-stone-600 mb-1">👤 스케이터 *</label>
             <select
               value={selectedUser}
               onChange={(e) => setSelectedUser(e.target.value)}
-              className="w-full p-3 bg-stone-50 border border-stone-200 rounded-2xl text-xs focus:outline-none mb-2"
+              className="w-full p-3 bg-stone-50 border border-stone-200 rounded-2xl text-xs focus:outline-none"
               required
             >
               <option value="">스케이터 선택</option>
@@ -170,24 +152,12 @@ export default function LogWritePage() {
                   {p.name}
                 </option>
               ))}
-              <option value="직접 입력">직접 입력</option>
             </select>
-            {selectedUser === '직접 입력' && (
-              <input
-                type="text"
-                value={customUser}
-                onChange={(e) => setCustomUser(e.target.value)}
-                placeholder="이름을 입력하세요"
-                className="w-full p-3 bg-stone-50 border border-stone-200 rounded-2xl text-xs focus:outline-none"
-              />
-            )}
           </div>
 
-          {/* 날짜 선택 */}
+          {/* 연습 날짜 */}
           <div>
-            <label className="block text-xs font-bold text-stone-600 mb-1">
-              📅 연습 날짜 *
-            </label>
+            <label className="block text-xs font-bold text-stone-600 mb-1">📅 연습 날짜 *</label>
             <input
               type="date"
               value={sessionDate}
@@ -197,54 +167,40 @@ export default function LogWritePage() {
             />
           </div>
 
-          {/* 장소(스팟) 선택 */}
+          {/* 연습 장소 (DB Spots ID 기반) */}
           <div>
-            <label className="block text-xs font-bold text-stone-600 mb-1">
-              📍 연습 장소 (스팟) *
-            </label>
+            <label className="block text-xs font-bold text-stone-600 mb-1">📍 연습 장소 (스팟) *</label>
             <select
-              value={spotName}
-              onChange={(e) => setSpotName(e.target.value)}
-              className="w-full p-3 bg-stone-50 border border-stone-200 rounded-2xl text-xs focus:outline-none mb-2"
+              value={selectedSpotId}
+              onChange={(e) => setSelectedSpotId(e.target.value)}
+              className="w-full p-3 bg-stone-50 border border-stone-200 rounded-2xl text-xs focus:outline-none"
               required
             >
               <option value="">장소를 선택하세요</option>
-              {spotOptions.map((spot, idx) => (
-                <option key={idx} value={spot}>
-                  {spot}
+              {spots.map((spot) => (
+                <option key={spot.id} value={spot.id}>
+                  {spot.name}
                 </option>
               ))}
             </select>
-            {spotName === '직접 입력' && (
-              <input
-                type="text"
-                value={customSpot}
-                onChange={(e) => setCustomSpot(e.target.value)}
-                placeholder="장소명을 입력하세요"
-                className="w-full p-3 bg-stone-50 border border-stone-200 rounded-2xl text-xs focus:outline-none"
-              />
-            )}
           </div>
 
-          {/* 연습한 트릭 */}
+          {/* 연습한 트릭 (DB Tricks 선택) */}
           <div>
-            <label className="block text-xs font-bold text-stone-600 mb-1">
-              🔥 연습한 트릭
-            </label>
+            <label className="block text-xs font-bold text-stone-600 mb-1">🔥 연습한 트릭</label>
             <div className="flex gap-2">
-              <input
-                type="text"
-                value={trickInput}
-                onChange={(e) => setTrickInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleAddTrick();
-                  }
-                }}
-                placeholder="예: 알리, 드롭인"
+              <select
+                value={trickSelectId}
+                onChange={(e) => setTrickSelectId(e.target.value)}
                 className="flex-1 p-3 bg-stone-50 border border-stone-200 rounded-2xl text-xs focus:outline-none"
-              />
+              >
+                <option value="">등록된 기술 선택</option>
+                {tricksList.map((trick) => (
+                  <option key={trick.id} value={trick.id}>
+                    {trick.name}
+                  </option>
+                ))}
+              </select>
               <button
                 type="button"
                 onClick={handleAddTrick}
@@ -253,17 +209,17 @@ export default function LogWritePage() {
                 추가
               </button>
             </div>
-            {tricks.length > 0 && (
+            {selectedTricks.length > 0 && (
               <div className="flex flex-wrap gap-1.5 pt-2">
-                {tricks.map((item, index) => (
+                {selectedTricks.map((item) => (
                   <span
-                    key={index}
+                    key={item.id}
                     className="bg-stone-100 text-stone-800 text-xs px-3 py-1 rounded-full border border-stone-200 flex items-center gap-1 font-medium"
                   >
-                    <span>{item}</span>
+                    <span>{item.name}</span>
                     <button
                       type="button"
-                      onClick={() => handleRemoveTrick(index)}
+                      onClick={() => handleRemoveTrick(item.id)}
                       className="text-stone-400 hover:text-red-500 font-bold ml-1"
                     >
                       ✕
@@ -274,33 +230,37 @@ export default function LogWritePage() {
             )}
           </div>
 
+          {/* 인스타 링크 */}
+          <div>
+            <label className="block text-xs font-bold text-stone-600 mb-1">📸 인스타그램 게시물/릴스 링크</label>
+            <input
+              type="url"
+              value={instagramUrl}
+              onChange={(e) => setInstagramUrl(e.target.value)}
+              placeholder="https://www.instagram.com/p/..."
+              className="w-full p-3 bg-stone-50 border border-stone-200 rounded-2xl text-xs focus:outline-none"
+            />
+          </div>
+
           {/* 사진 첨부 */}
           <div>
-            <label className="block text-xs font-bold text-stone-600 mb-1">
-              📷 세션 사진 첨부
-            </label>
+            <label className="block text-xs font-bold text-stone-600 mb-1">📷 세션 사진 첨부</label>
             <input
               type="file"
               accept="image/*"
               onChange={handleImageChange}
-              className="w-full text-xs text-stone-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-stone-100 file:text-stone-700 hover:file:bg-stone-200"
+              className="w-full text-xs text-stone-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-stone-100 file:text-stone-700"
             />
             {imagePreview && (
               <div className="mt-2 rounded-2xl overflow-hidden border border-stone-200 max-h-48 flex items-center justify-center bg-stone-50">
-                <img
-                  src={imagePreview}
-                  alt="미리보기"
-                  className="w-full h-full object-cover"
-                />
+                <img src={imagePreview} alt="미리보기" className="w-full h-full object-cover" />
               </div>
             )}
           </div>
 
-          {/* 한줄 메모 */}
+          {/* 메모 */}
           <div>
-            <label className="block text-xs font-bold text-stone-600 mb-1">
-              📝 메모
-            </label>
+            <label className="block text-xs font-bold text-stone-600 mb-1">📝 메모</label>
             <textarea
               value={memo}
               onChange={(e) => setMemo(e.target.value)}
@@ -313,7 +273,7 @@ export default function LogWritePage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3.5 bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs rounded-2xl transition-all shadow-sm disabled:bg-stone-300"
+            className="w-full py-3.5 bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs rounded-2xl transition-all disabled:bg-stone-300"
           >
             {loading ? '저장 중...' : '🛹 개인 일지 저장하기'}
           </button>

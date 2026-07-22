@@ -11,7 +11,6 @@ export default function HomePage() {
   const [selectedProfile, setSelectedProfile] = useState<string>('ALL');
   const [loading, setLoading] = useState(true);
 
-  // 달력 관련 상태
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
 
@@ -25,7 +24,6 @@ export default function HomePage() {
     const { data: profData } = await supabase.from('profiles').select('*').order('name');
     if (profData) setProfiles(profData);
 
-    // 최근 등록순 내림차순 정렬
     const { data: logsData } = await supabase
       .from('skating_logs')
       .select('*')
@@ -106,7 +104,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-[#FDFBF7] text-stone-800 flex flex-col items-center p-4 sm:p-6 font-sans">
       <main className="w-full max-w-md space-y-5">
-        {/* 스케이터 필터 */}
+        {/* 스케이터 선택 */}
         <section className="bg-white border border-stone-200/80 rounded-3xl p-4 shadow-sm space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-extrabold text-stone-900">👤 스케이터 선택</span>
@@ -262,11 +260,12 @@ export default function HomePage() {
           </button>
         </div>
 
-        {/* 목록 */}
+        {/* 히스토리 리스트 */}
         {loading ? (
           <div className="py-12 text-center text-xs text-stone-400">데이터를 가져오는 중...</div>
         ) : (
           <div className="space-y-3">
+            {/* 개인 일지 리스트 */}
             {activeTab === 'logs' && (
               filteredLogs.length === 0 ? (
                 <div className="bg-white rounded-3xl p-8 text-center border border-stone-200/70 text-xs text-stone-400">
@@ -319,11 +318,28 @@ export default function HomePage() {
                         "{item.memo}"
                       </p>
                     )}
+
+                    {/* 📸 인스타 영상 바로가기 버튼 */}
+                    {item.instagram_url && (
+                      <div className="pt-1">
+                        <span
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            window.open(item.instagram_url, '_blank');
+                          }}
+                          className="inline-flex items-center gap-1.5 text-[11px] font-bold text-pink-600 bg-pink-50 hover:bg-pink-100 px-3 py-1.5 rounded-xl border border-pink-100 transition-all cursor-pointer"
+                        >
+                          📸 인스타그램 영상 보기 →
+                        </span>
+                      </div>
+                    )}
                   </a>
                 ))
               )
             )}
 
+            {/* 강습 피드백 리스트 */}
             {activeTab === 'lessons' && (
               filteredLessons.length === 0 ? (
                 <div className="bg-white rounded-3xl p-8 text-center border border-stone-200/70 text-xs text-stone-400">
@@ -382,6 +398,22 @@ export default function HomePage() {
                       <div className="bg-stone-50 p-3 rounded-2xl border border-stone-100 space-y-1">
                         <span className="text-[10px] font-bold text-stone-400 block">COACH FEEDBACK</span>
                         <p className="text-xs text-stone-700 leading-relaxed line-clamp-2">{item.instructor_note}</p>
+                      </div>
+                    )}
+
+                    {/* 📸 인스타 영상 바로가기 버튼 */}
+                    {item.instagram_url && (
+                      <div className="pt-1">
+                        <span
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            window.open(item.instagram_url, '_blank');
+                          }}
+                          className="inline-flex items-center gap-1.5 text-[11px] font-bold text-pink-600 bg-pink-50 hover:bg-pink-100 px-3 py-1.5 rounded-xl border border-pink-100 transition-all cursor-pointer"
+                        >
+                          📸 인스타그램 영상 보기 →
+                        </span>
                       </div>
                     )}
                   </a>
