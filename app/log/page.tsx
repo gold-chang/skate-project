@@ -8,19 +8,23 @@ export default function LogWritePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
+  // 프로필
   const [profiles, setProfiles] = useState<any[]>([]);
   const [selectedUser, setSelectedUser] = useState('');
   const [customUser, setCustomUser] = useState('');
 
+  // 입력 필드
   const [sessionDate, setSessionDate] = useState(
     new Date().toISOString().split('T')[0]
   );
   const [spotName, setSpotName] = useState('');
   const [customSpot, setCustomSpot] = useState('');
 
+  // 트릭
   const [tricks, setTricks] = useState<string[]>([]);
   const [trickInput, setTrickInput] = useState('');
 
+  // 메모 & 사진
   const [memo, setMemo] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -60,6 +64,7 @@ export default function LogWritePage() {
     setTricks(tricks.filter((_, i) => i !== index));
   };
 
+  // 폼 제출 함수 (이미지 업로드 보장)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -67,52 +72,62 @@ export default function LogWritePage() {
     const finalSpot = spotName === '직접 입력' ? customSpot : spotName;
 
     if (!finalUser.trim()) {
-      alert('스케이터 이름을 입력해 주세요.');
+      alert('스케이터 이름을 선택/입력해 주세요.');
       return;
     }
     if (!finalSpot.trim()) {
-      alert('연습 장소를 입력해 주세요.');
+      alert('연습 장소를 선택/입력해 주세요.');
       return;
     }
 
     setLoading(true);
 
     try {
-      let imageUrl = null;
+      let finalImageUrl: string | null = null;
 
+      // 📷 1. 사진 파일이 있으면 Supabase Storage에 먼저 저장
       if (imageFile) {
-        const fileExt = imageFile.name.split('.').pop();
-        const fileName = `log_${Date.now()}.${fileExt}`;
+        const fileExt = imageFile.name.split('.').pop() || 'jpg';
+        const fileName = `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
 
         const { error: uploadError } = await supabase.storage
           .from('skate_photos')
-          .upload(fileName, imageFile);
+          .upload(fileName, imageFile, {
+            cacheControl: '3600',
+            upsert: true,
+          });
 
         if (uploadError) {
-          console.error('이미지 업로드 실패:', uploadError);
+          console.error('스토리지 업로드 오류:', uploadError);
+          alert('사진 업로드 실패: ' + uploadError.message);
         } else {
-          const { data: publicUrlData } = supabase.storage
+          // Public URL 가져오기
+          const { data: urlData } = supabase.storage
             .from('skate_photos')
             .getPublicUrl(fileName);
-          imageUrl = publicUrlData.publicUrl;
+
+          if (urlData?.publicUrl) {
+            finalImageUrl = urlData.publicUrl;
+          }
         }
       }
 
-      const { error } = await supabase.from('skating_logs').insert([
+      // 📝 2. DB 저장 (image_url 포함)
+      const { error: dbError } = await supabase.from('skating_logs').insert([
         {
           user_name: finalUser,
           session_date: sessionDate,
           spot_name: finalSpot,
           practiced_tricks: tricks,
           memo: memo,
-          image_url: imageUrl,
+          image_url: finalImageUrl, // 👈 보장된 URL 대입
         },
       ]);
 
-      if (error) {
-        alert('저장 중 오류가 발생했습니다: ' + error.message);
+      if (dbError) {
+        alert('DB 저장 오류: ' + dbError.message);
       } else {
-        alert('개인 일지가 등록되었습니다!');
+        alert('🎉 개인 일지가 등록되었습니다!');
         router.push('/');
       }
     } catch (err: any) {
@@ -138,6 +153,7 @@ export default function LogWritePage() {
 
       <main className="w-full max-w-md bg-white border border-stone-200/80 rounded-3xl p-6 shadow-sm">
         <form onSubmit={handleSubmit} className="space-y-5">
+          {/* 스케이터 선택 */}
           <div>
             <label className="block text-xs font-bold text-stone-600 mb-1">
               👤 스케이터 *
@@ -167,6 +183,7 @@ export default function LogWritePage() {
             )}
           </div>
 
+          {/* 날짜 선택 */}
           <div>
             <label className="block text-xs font-bold text-stone-600 mb-1">
               📅 연습 날짜 *
@@ -180,6 +197,7 @@ export default function LogWritePage() {
             />
           </div>
 
+          {/* 장소(스팟) 선택 */}
           <div>
             <label className="block text-xs font-bold text-stone-600 mb-1">
               📍 연습 장소 (스팟) *
@@ -208,6 +226,7 @@ export default function LogWritePage() {
             )}
           </div>
 
+          {/* 연습한 트릭 */}
           <div>
             <label className="block text-xs font-bold text-stone-600 mb-1">
               🔥 연습한 트릭
@@ -255,6 +274,7 @@ export default function LogWritePage() {
             )}
           </div>
 
+          {/* 사진 첨부 */}
           <div>
             <label className="block text-xs font-bold text-stone-600 mb-1">
               📷 세션 사진 첨부
@@ -276,6 +296,7 @@ export default function LogWritePage() {
             )}
           </div>
 
+          {/* 한줄 메모 */}
           <div>
             <label className="block text-xs font-bold text-stone-600 mb-1">
               📝 메모
