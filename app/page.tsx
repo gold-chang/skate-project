@@ -25,7 +25,7 @@ export default function HomePage() {
     const { data: profData } = await supabase.from('profiles').select('*').order('name');
     if (profData) setProfiles(profData);
 
-    // 💡 최근에 등록한 항목이 가장 먼저 오도록 내림차순(ascending: false) 정렬
+    // 최근 등록순 내림차순 정렬
     const { data: logsData } = await supabase
       .from('skating_logs')
       .select('*')
@@ -42,7 +42,6 @@ export default function HomePage() {
     setLoading(false);
   };
 
-  // 삭제 처리
   const handleDeleteLog = async (id: number, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -71,7 +70,6 @@ export default function HomePage() {
     }
   };
 
-  // 달력 로직
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
 
@@ -91,7 +89,6 @@ export default function HomePage() {
   const hasLessonOnDate = (dateStr: string) =>
     lessons.some((l) => l.created_at && l.created_at.startsWith(dateStr));
 
-  // 필터링된 데이터
   const filteredLogs = logs.filter((item) => {
     const matchUser = selectedProfile === 'ALL' || item.user_name === selectedProfile;
     const matchDate = selectedDateStr ? item.session_date === selectedDateStr : true;
@@ -109,7 +106,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-[#FDFBF7] text-stone-800 flex flex-col items-center p-4 sm:p-6 font-sans">
       <main className="w-full max-w-md space-y-5">
-        {/* 1. 스케이터 선택 필터 */}
+        {/* 스케이터 필터 */}
         <section className="bg-white border border-stone-200/80 rounded-3xl p-4 shadow-sm space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-extrabold text-stone-900">👤 스케이터 선택</span>
@@ -149,7 +146,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* 2. 작성하기 버튼 모음 */}
+        {/* 작성하기 버튼 */}
         <div className="grid grid-cols-2 gap-2.5">
           <a
             href="/log"
@@ -167,7 +164,7 @@ export default function HomePage() {
           </a>
         </div>
 
-        {/* 3. 달력 히스토리 */}
+        {/* 달력 */}
         <section className="bg-white border border-stone-200/80 rounded-3xl p-4 shadow-sm space-y-3">
           <div className="flex items-center justify-between px-1">
             <button onClick={prevMonth} className="text-xs font-bold text-stone-400 hover:text-stone-900 px-2 py-1">
@@ -241,7 +238,7 @@ export default function HomePage() {
           )}
         </section>
 
-        {/* 4. 탭 메뉴 */}
+        {/* 탭 */}
         <div className="flex bg-stone-200/50 p-1 rounded-2xl border border-stone-200/60">
           <button
             onClick={() => setActiveTab('logs')}
@@ -265,12 +262,11 @@ export default function HomePage() {
           </button>
         </div>
 
-        {/* 5. 히스토리 데이터 리스트 (최근 항목 순) */}
+        {/* 목록 */}
         {loading ? (
           <div className="py-12 text-center text-xs text-stone-400">데이터를 가져오는 중...</div>
         ) : (
           <div className="space-y-3">
-            {/* 개인 일지 리스트 */}
             {activeTab === 'logs' && (
               filteredLogs.length === 0 ? (
                 <div className="bg-white rounded-3xl p-8 text-center border border-stone-200/70 text-xs text-stone-400">
@@ -328,7 +324,6 @@ export default function HomePage() {
               )
             )}
 
-            {/* 강습 피드백 리스트 */}
             {activeTab === 'lessons' && (
               filteredLessons.length === 0 ? (
                 <div className="bg-white rounded-3xl p-8 text-center border border-stone-200/70 text-xs text-stone-400">
@@ -362,14 +357,12 @@ export default function HomePage() {
                       {item.spot_name && <span>📍 <strong className="text-stone-800">{item.spot_name}</strong></span>}
                     </div>
 
-                    {/* 📷 강습 사진 미리보기 */}
                     {item.image_url && (
                       <div className="rounded-2xl overflow-hidden border border-stone-200/60 max-h-52 bg-stone-50 flex items-center justify-center">
                         <img src={item.image_url} alt="강습 사진" className="w-full h-full object-cover" />
                       </div>
                     )}
 
-                    {/* 🏆 연습 / 마스터한 기술 목록 */}
                     {item.mastered_tricks && item.mastered_tricks.length > 0 && (
                       <div className="flex flex-wrap gap-1.5">
                         {item.mastered_tricks.map((trickObj: any, idx: number) => (
