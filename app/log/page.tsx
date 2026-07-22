@@ -18,7 +18,7 @@ export default function LogWritePage() {
   const [sessionDate, setSessionDate] = useState(
     new Date().toISOString().split('T')[0]
   );
-  
+
   // 장소 검색 & 선택
   const [spotSearch, setSpotSearch] = useState('');
   const [selectedSpot, setSelectedSpot] = useState<any>(null);
@@ -110,7 +110,7 @@ export default function LogWritePage() {
           {
             user_name: selectedUser,
             session_date: sessionDate,
-            spot_id: selectedSpot.id, // UUID 장소 참조
+            spot_id: selectedSpot.id,
             memo: memo,
             image_url: finalImageUrl,
             instagram_url: instagramUrl,
@@ -130,7 +130,7 @@ export default function LogWritePage() {
         await supabase.from('log_tricks').insert(trickRows);
       }
 
-      alert('🎉 개인 일지가 등록되었습니다!');
+      alert('🎉 개인 일지가 성공적으로 등록되었습니다!');
       router.push('/');
     } catch (err: any) {
       alert('오류 발생: ' + err.message);
@@ -250,8 +250,8 @@ export default function LogWritePage() {
                       className="p-2.5 text-xs font-semibold text-stone-700 hover:bg-stone-200/60 cursor-pointer flex justify-between items-center"
                     >
                       <span>{trick.name}</span>
-                      <span className="text-[10px] bg-stone-200 text-stone-600 px-1.5 py-0.5 rounded">
-                        {trick.category}
+                      <span className="text-[10px] bg-stone-200 text-stone-700 font-bold px-1.5 py-0.5 rounded">
+                        {trick.difficulty || '중'}
                       </span>
                     </div>
                   ))
@@ -324,7 +324,7 @@ export default function LogWritePage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3.5 bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs rounded-2xl transition-all disabled:bg-stone-300"
+            className="w-full py-3.5 bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs rounded-2xl transition-all shadow-sm disabled:bg-stone-300"
           >
             {loading ? '저장 중...' : '🛹 개인 일지 저장하기'}
           </button>

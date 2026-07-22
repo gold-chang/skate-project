@@ -310,8 +310,8 @@ export default function LessonWritePage() {
                       className="p-2.5 text-xs font-semibold text-stone-700 hover:bg-stone-200/60 cursor-pointer flex justify-between items-center"
                     >
                       <span>{trick.name}</span>
-                      <span className="text-[10px] bg-stone-900 text-white px-1.5 py-0.5 rounded">
-                        +{selectedBadge}
+                      <span className="text-[10px] bg-stone-200 text-stone-700 font-bold px-1.5 py-0.5 rounded">
+                        {trick.difficulty || '중'}
                       </span>
                     </div>
                   ))

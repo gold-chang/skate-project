@@ -1,9 +1,12 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
 export default function HomePage() {
+  const router = useRouter();
+
   const [activeTab, setActiveTab] = useState<'logs' | 'lessons'>('logs');
   const [logs, setLogs] = useState<any[]>([]);
   const [lessons, setLessons] = useState<any[]>([]);
@@ -11,6 +14,7 @@ export default function HomePage() {
   const [selectedProfile, setSelectedProfile] = useState<string>('ALL');
   const [loading, setLoading] = useState(true);
 
+  // 달력 관련 상태
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
 
@@ -21,10 +25,11 @@ export default function HomePage() {
   const fetchData = async () => {
     setLoading(true);
 
+    // 1. 프로필 목록 가져오기
     const { data: profData } = await supabase.from('profiles').select('*').order('name');
     if (profData) setProfiles(profData);
 
-    // 1. 개인 일지 조인 쿼리 (spots & log_tricks/tricks 조인)
+    // 2. 개인 일지 조인 쿼리 (spots & log_tricks/tricks 조인)
     const { data: logsData, error: logErr } = await supabase
       .from('skating_logs')
       .select(`
@@ -38,7 +43,7 @@ export default function HomePage() {
 
     if (logErr) console.error('일지 조인 에러:', logErr);
 
-    // 2. 강습 리포트 조인 쿼리 (spots & lesson_tricks/tricks 조인)
+    // 3. 강습 리포트 조인 쿼리 (spots & lesson_tricks/tricks 조인)
     const { data: lessonsData, error: lessonErr } = await supabase
       .from('lesson_reports')
       .select(`
@@ -86,6 +91,7 @@ export default function HomePage() {
     }
   };
 
+  // 달력 관련 연산
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
 
@@ -105,6 +111,7 @@ export default function HomePage() {
   const hasLessonOnDate = (dateStr: string) =>
     lessons.some((l) => l.created_at && l.created_at.startsWith(dateStr));
 
+  // 필터링 적용된 목록
   const filteredLogs = logs.filter((item) => {
     const matchUser = selectedProfile === 'ALL' || item.user_name === selectedProfile;
     const matchDate = selectedDateStr ? item.session_date === selectedDateStr : true;
@@ -122,6 +129,20 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-[#FDFBF7] text-stone-800 flex flex-col items-center p-4 sm:p-6 font-sans">
       <main className="w-full max-w-md space-y-5">
+        {/* 상단 헤더 & 빠른 진입 버튼 */}
+        <header className="flex items-center justify-between pt-2 pb-1">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🛹</span>
+            <h1 className="text-base font-extrabold text-stone-900 tracking-tight">Skate Log</h1>
+          </div>
+          <button
+            onClick={() => router.push('/admin/tricks')}
+            className="text-xs font-bold text-stone-700 bg-stone-200/80 hover:bg-stone-300 px-3 py-1.5 rounded-full transition-all flex items-center gap-1 shadow-sm active:scale-95"
+          >
+            ⚙️ 기술 관리
+          </button>
+        </header>
+
         {/* 스케이터 필터 */}
         <section className="bg-white border border-stone-200/80 rounded-3xl p-4 shadow-sm space-y-3">
           <div className="flex items-center justify-between">
@@ -162,7 +183,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* 작성 버튼 */}
+        {/* 작성하기 버튼 영역 */}
         <div className="grid grid-cols-2 gap-2.5">
           <a
             href="/log"
@@ -254,7 +275,7 @@ export default function HomePage() {
           )}
         </section>
 
-        {/* 탭 */}
+        {/* 탭 버튼 */}
         <div className="flex bg-stone-200/50 p-1 rounded-2xl border border-stone-200/60">
           <button
             onClick={() => setActiveTab('logs')}
@@ -278,7 +299,7 @@ export default function HomePage() {
           </button>
         </div>
 
-        {/* 목록 */}
+        {/* 카드 목록 */}
         {loading ? (
           <div className="py-12 text-center text-xs text-stone-400">데이터를 가져오는 중...</div>
         ) : (
