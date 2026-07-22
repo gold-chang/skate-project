@@ -25,10 +25,12 @@ export default function HomePage() {
     const { data: profData } = await supabase.from('profiles').select('*').order('name');
     if (profData) setProfiles(profData);
 
+    // 💡 최근에 등록한 항목이 가장 먼저 오도록 내림차순(ascending: false) 정렬
     const { data: logsData } = await supabase
       .from('skating_logs')
       .select('*')
-      .order('session_date', { ascending: false });
+      .order('session_date', { ascending: false })
+      .order('id', { ascending: false });
 
     const { data: lessonsData } = await supabase
       .from('lesson_reports')
@@ -40,8 +42,9 @@ export default function HomePage() {
     setLoading(false);
   };
 
-  // --- 삭제 처리 함수 ---
+  // 삭제 처리
   const handleDeleteLog = async (id: number, e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
     if (!confirm('이 세션 일지를 삭제하시겠습니까?')) return;
 
@@ -68,7 +71,7 @@ export default function HomePage() {
     }
   };
 
-  // --- 달력 계산 로직 ---
+  // 달력 로직
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
 
@@ -106,7 +109,6 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-[#FDFBF7] text-stone-800 flex flex-col items-center p-4 sm:p-6 font-sans">
       <main className="w-full max-w-md space-y-5">
-
         {/* 1. 스케이터 선택 필터 */}
         <section className="bg-white border border-stone-200/80 rounded-3xl p-4 shadow-sm space-y-3">
           <div className="flex items-center justify-between">
@@ -165,7 +167,7 @@ export default function HomePage() {
           </a>
         </div>
 
-        {/* 3. 달력 (Calendar) 히스토리 */}
+        {/* 3. 달력 히스토리 */}
         <section className="bg-white border border-stone-200/80 rounded-3xl p-4 shadow-sm space-y-3">
           <div className="flex items-center justify-between px-1">
             <button onClick={prevMonth} className="text-xs font-bold text-stone-400 hover:text-stone-900 px-2 py-1">
@@ -263,7 +265,7 @@ export default function HomePage() {
           </button>
         </div>
 
-        {/* 5. 히스토리 데이터 리스트 */}
+        {/* 5. 히스토리 데이터 리스트 (최근 항목 순) */}
         {loading ? (
           <div className="py-12 text-center text-xs text-stone-400">데이터를 가져오는 중...</div>
         ) : (
@@ -276,7 +278,11 @@ export default function HomePage() {
                 </div>
               ) : (
                 filteredLogs.map((item) => (
-                  <div key={item.id} className="bg-white border border-stone-200/80 rounded-3xl p-5 shadow-sm space-y-3 relative">
+                  <a
+                    key={item.id}
+                    href={`/log/${item.id}`}
+                    className="block bg-white border border-stone-200/80 hover:border-stone-400 rounded-3xl p-5 shadow-sm space-y-3 transition-all relative"
+                  >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-extrabold text-stone-900">📍 {item.spot_name}</span>
@@ -288,7 +294,7 @@ export default function HomePage() {
                         <span className="text-[11px] font-semibold text-stone-400">{item.session_date}</span>
                         <button
                           onClick={(e) => handleDeleteLog(item.id, e)}
-                          className="text-stone-300 hover:text-red-500 text-xs p-1 transition-colors"
+                          className="text-stone-300 hover:text-red-500 text-xs p-1 transition-colors z-10"
                           title="삭제하기"
                         >
                           ✕
@@ -296,9 +302,8 @@ export default function HomePage() {
                       </div>
                     </div>
 
-                    {/* 📷 일지 첨부 사진 */}
                     {item.image_url && (
-                      <div className="rounded-2xl overflow-hidden border border-stone-200/60 max-h-52 bg-stone-50">
+                      <div className="rounded-2xl overflow-hidden border border-stone-200/60 max-h-52 bg-stone-50 flex items-center justify-center">
                         <img src={item.image_url} alt="세션 사진" className="w-full h-full object-cover" />
                       </div>
                     )}
@@ -314,11 +319,11 @@ export default function HomePage() {
                     )}
 
                     {item.memo && (
-                      <p className="text-xs text-stone-600 bg-stone-50 p-3 rounded-2xl border border-stone-100 leading-relaxed">
+                      <p className="text-xs text-stone-600 bg-stone-50 p-3 rounded-2xl border border-stone-100 leading-relaxed line-clamp-2">
                         "{item.memo}"
                       </p>
                     )}
-                  </div>
+                  </a>
                 ))
               )
             )}
@@ -344,7 +349,7 @@ export default function HomePage() {
                         </span>
                         <button
                           onClick={(e) => handleDeleteLesson(item.id, e)}
-                          className="text-stone-300 hover:text-red-500 text-xs p-1 transition-colors"
+                          className="text-stone-300 hover:text-red-500 text-xs p-1 transition-colors z-10"
                           title="삭제하기"
                         >
                           ✕
@@ -352,16 +357,31 @@ export default function HomePage() {
                       </div>
                     </div>
 
-                    <div className="text-xs text-stone-500 flex gap-2">
-                      <span>강사: <strong className="text-stone-800">{item.instructor_name}</strong></span>
-                      <span>•</span>
-                      <span>스팟: <strong className="text-stone-800">{item.spot_name}</strong></span>
+                    <div className="text-xs text-stone-500 flex flex-wrap gap-2">
+                      {item.instructor_name && <span>강사: <strong className="text-stone-800">{item.instructor_name}</strong></span>}
+                      {item.spot_name && <span>📍 <strong className="text-stone-800">{item.spot_name}</strong></span>}
                     </div>
 
-                    {/* 📷 강습 첨부 사진 */}
+                    {/* 📷 강습 사진 미리보기 */}
                     {item.image_url && (
-                      <div className="rounded-2xl overflow-hidden border border-stone-200/60 max-h-52 bg-stone-50">
+                      <div className="rounded-2xl overflow-hidden border border-stone-200/60 max-h-52 bg-stone-50 flex items-center justify-center">
                         <img src={item.image_url} alt="강습 사진" className="w-full h-full object-cover" />
+                      </div>
+                    )}
+
+                    {/* 🏆 연습 / 마스터한 기술 목록 */}
+                    {item.mastered_tricks && item.mastered_tricks.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {item.mastered_tricks.map((trickObj: any, idx: number) => (
+                          <span key={idx} className="bg-stone-100 text-stone-700 text-[11px] font-semibold px-2.5 py-1 rounded-full border border-stone-200/60 flex items-center gap-1">
+                            <span>{typeof trickObj === 'string' ? trickObj : trickObj.name}</span>
+                            {trickObj.badge && (
+                              <span className="text-[9px] bg-stone-200 text-stone-600 px-1 py-0.2 rounded font-bold">
+                                {trickObj.badge}
+                              </span>
+                            )}
+                          </span>
+                        ))}
                       </div>
                     )}
 
@@ -377,7 +397,6 @@ export default function HomePage() {
             )}
           </div>
         )}
-
       </main>
     </div>
   );
