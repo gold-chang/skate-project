@@ -7,19 +7,20 @@ import { supabase } from '@/lib/supabase';
 export default function LessonDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const lessonId = params.id as string;
+  const lessonId = params?.id as string;
 
   const [lesson, setLesson] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (lessonId) fetchLessonDetail();
+    if (lessonId) {
+      fetchLessonDetail();
+    }
   }, [lessonId]);
 
   const fetchLessonDetail = async () => {
     setLoading(true);
 
-    // spots 및 lesson_tricks (tricks + badge) 조인 쿼리
     const { data, error } = await supabase
       .from('lesson_reports')
       .select(`
@@ -27,14 +28,14 @@ export default function LessonDetailPage() {
         spots ( name ),
         lesson_tricks (
           badge,
-          tricks ( id, name, category )
+          tricks ( id, name, difficulty )
         )
       `)
       .eq('id', lessonId)
-      .single();
+      .maybeSingle();
 
     if (error) {
-      console.error('강습 상세 조회 오류:', error);
+      console.error('강습 상세 조회 에러:', error);
     } else {
       setLesson(data);
     }
@@ -55,8 +56,8 @@ export default function LessonDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center text-stone-400 text-xs">
-        상세 정보를 불러오는 중...
+      <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center text-stone-400 text-xs font-semibold">
+        🎓 강습 정보를 불러오는 중...
       </div>
     );
   }

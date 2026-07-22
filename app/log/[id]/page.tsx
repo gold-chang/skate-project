@@ -7,33 +7,34 @@ import { supabase } from '@/lib/supabase';
 export default function LogDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const logId = params.id as string;
+  const logId = params?.id as string;
 
   const [log, setLog] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (logId) fetchLogDetail();
+    if (logId) {
+      fetchLogDetail();
+    }
   }, [logId]);
 
   const fetchLogDetail = async () => {
     setLoading(true);
 
-    // spots 및 log_tricks (tricks) 조인 쿼리
     const { data, error } = await supabase
       .from('skating_logs')
       .select(`
         *,
         spots ( name ),
         log_tricks (
-          tricks ( id, name, category )
+          tricks ( id, name, difficulty )
         )
       `)
       .eq('id', logId)
-      .single();
+      .maybeSingle();
 
     if (error) {
-      console.error('일지 상세 조회 오류:', error);
+      console.error('일지 상세 조회 에러:', error);
     } else {
       setLog(data);
     }
@@ -54,8 +55,8 @@ export default function LogDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center text-stone-400 text-xs">
-        상세 정보를 불러오는 중...
+      <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center text-stone-400 text-xs font-semibold">
+        🛹 세션 정보를 불러오는 중...
       </div>
     );
   }
@@ -120,9 +121,9 @@ export default function LogDetailPage() {
                   className="bg-stone-900 text-white text-xs px-3 py-1.5 rounded-full font-semibold flex items-center gap-1.5"
                 >
                   <span>{lt.tricks?.name}</span>
-                  {lt.tricks?.category && (
-                    <span className="text-[9px] bg-stone-700 text-stone-300 px-1.5 py-0.2 rounded">
-                      {lt.tricks.category}
+                  {lt.tricks?.difficulty && (
+                    <span className="text-[9px] bg-stone-700 text-stone-200 px-1.5 py-0.2 rounded">
+                      {lt.tricks.difficulty}
                     </span>
                   )}
                 </span>
