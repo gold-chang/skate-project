@@ -1,208 +1,255 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { compressImage } from '@/lib/imageResize';
+
+const TRICK_OPTIONS = [
+  'Ollie (알리)',
+  'Frontside 180',
+  'Backside 180',
+  'Kickflip (킥플립)',
+  'Heelflip (힐플립)',
+  'Shuvit (샤빗)',
+  'Pop Shuvit (팝샤빗)',
+  '50-50 Grind',
+  'Boardslide',
+];
 
 export default function WriteReportPage() {
   const [loading, setLoading] = useState(false);
+  const [profiles, setProfiles] = useState<any[]>([]);
 
-  // 폼 입력 데이터 상태 관리
-  const [formData, setFormData] = useState({
-    shopName: '홍대 로컬 스케이트샵',
-    studentName: '',
-    instructorName: '',
-    spotName: '뚝섬 스케이트파크',
-    lessonRound: '1회차 / 10회',
-    instructorNote: '',
-    nextGoal: '',
-  });
+  // 기본 정보
+  const [studentName, setStudentName] = useState('');
+  const [instructorName, setInstructorName] = useState('');
+  const [shopName, setShopName] = useState('시흥 뱅크트릭스');
+  const [spotName, setSpotName] = useState('실내 파크');
+  const [lessonRound, setLessonRound] = useState('1회차');
 
-  // 선택된 트릭 뱃지 관리
-  const [selectedTricks, setSelectedTricks] = useState<string[]>([]);
+  // 트릭 & 피드백
+  const [selectedTricks, setSelectedTricks] = useState<any[]>([]);
+  const [instructorNote, setInstructorNote] = useState('');
+  const [nextGoal, setNextGoal] = useState('');
 
-  const availableTricks = [
-    'Ollie (알리)',
-    'FS 180',
-    'BS 180',
-    'Kickflip (킥플립)',
-    'Heelflip (힐플립)',
-    'Shuvit (샤빗)',
-  ];
+  // 📷 사진 첨부 상태
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
 
-  // 트릭 원터치 토글 함수
-  const toggleTrick = (trick: string) => {
-    if (selectedTricks.includes(trick)) {
-      setSelectedTricks(selectedTricks.filter((t) => t !== trick));
-    } else {
-      setSelectedTricks([...selectedTricks, trick]);
+  useEffect(() => {
+    fetchProfiles();
+  }, []);
+
+  const fetchProfiles = async () => {
+    const { data } = await supabase.from('profiles').select('*').order('name');
+    if (data && data.length > 0) {
+      setProfiles(data);
+      setStudentName(data[0].name);
+      // 강사가 구분되어 있다면 기본값 설정
+      const instructor = data.find((p) => p.role === 'instructor');
+      setInstructorName(instructor ? instructor.name : data[0].name);
     }
   };
 
-  // Supabase DB에 리포트 저장 함수
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setImageFile(file);
+      setImagePreview(URL.createObjectURL(file));
+    }
+  };
+
+  const toggleTrick = (trickName: string) => {
+    const exists = selectedTricks.find((t) => t.name === trickName);
+    if (exists) {
+      setSelectedTricks(selectedTricks.filter((t) => t.name !== trickName));
+    } else {
+      setSelectedTricks([...selectedTricks, { name: trickName, badge: '완성', desc: '' }]);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.studentName || !formData.instructorName) {
-      alert('수강생 이름과 강사 이름을 입력해주세요!');
-      return;
-    }
-
     setLoading(true);
 
-    // DB 저장을 위한 포맷팅
-    const masteredTricksFormatted = selectedTricks.map((trick) => ({
-      name: trick,
-      badge: '🔥 성공',
-      desc: '오늘 강습 중 달성 완료!',
-    }));
+    let imageUrl = '';
 
-    // Supabase lesson_reports 테이블에 INSERT
-    const { data, error } = await supabase.from('lesson_reports').insert([
+    // 📷 이미지 압축 및 수파베이스 저장
+    if (imageFile) {
+      try {
+        const compressedBlob = await compressImage(imageFile, 1000, 0.7);
+        const fileName = `lesson_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.jpg`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('skate_photos')
+          .upload(fileName, compressedBlob, { contentType: 'image/jpeg' });
+
+        if (!uploadError) {
+          const { data: urlData } = supabase.storage.from('skate_photos').getPublicUrl(fileName);
+          imageUrl = urlData.publicUrl;
+        }
+      } catch (err) {
+        console.error('이미지 업로드 오류:', err);
+      }
+    }
+
+    const { error } = await supabase.from('lesson_reports').insert([
       {
-        student_name: formData.studentName,
-        instructor_name: formData.instructorName,
-        shop_name: formData.shopName,
-        spot_name: formData.spotName,
-        lesson_round: formData.lessonRound,
-        mastered_tricks: masteredTricksFormatted,
-        instructor_note: formData.instructorNote,
-        next_goal: formData.nextGoal,
+        student_name: studentName,
+        instructor_name: instructorName,
+        shop_name: shopName,
+        spot_name: spotName,
+        lesson_round: lessonRound,
+        mastered_tricks: selectedTricks,
+        instructor_note: instructorNote,
+        next_goal: nextGoal,
+        image_url: imageUrl,
       },
     ]);
 
     setLoading(false);
 
     if (error) {
-      console.error('DB 저장 에러:', error);
-      alert('저장 중 오류가 발생했습니다: ' + error.message);
+      alert('저장 실패: ' + error.message);
     } else {
-      alert('🎉 강습 리포트가 성공적으로 Supabase DB에 저장되었습니다!');
-      // 저장 성공 후 메인 페이지로 이동
+      alert('🎉 강습 피드백이 생성되었습니다!');
       window.location.href = '/';
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center p-4 sm:p-6">
-      <header className="w-full max-w-md my-4">
-        <h1 className="text-2xl font-black text-white">🛹 강사용 피드백 작성</h1>
-        <p className="text-xs text-slate-400 mt-1">
-          터치 몇 번으로 10초 만에 리포트를 작성해보세요.
-        </p>
+    <div className="min-h-screen bg-[#FDFBF7] text-stone-800 flex flex-col items-center p-4 sm:p-6 font-sans">
+      <header className="w-full max-w-md my-4 flex items-center justify-between">
+        <a href="/" className="text-xs font-bold text-stone-500 hover:text-stone-900">
+          ← 메인으로
+        </a>
+        <span className="text-xs font-bold tracking-wider text-stone-600 bg-stone-200/60 px-3 py-1 rounded-full">
+          New Feedback
+        </span>
       </header>
 
-      <form
-        onSubmit={handleSubmit}
-        className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-5"
-      >
-        {/* 수강생 & 강사 이름 */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-slate-400 font-semibold block mb-1">
-              수강생 이름 *
-            </label>
-            <input
-              type="text"
-              placeholder="예: 김철수"
-              value={formData.studentName}
-              onChange={(e) => setFormData({ ...formData, studentName: e.target.value })}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-400"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-slate-400 font-semibold block mb-1">
-              담당 강사 이름 *
-            </label>
-            <input
-              type="text"
-              placeholder="예: 이로컬"
-              value={formData.instructorName}
-              onChange={(e) => setFormData({ ...formData, instructorName: e.target.value })}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-400"
-            />
-          </div>
-        </div>
-
-        {/* 샵 & 스팟 정보 */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-slate-400 font-semibold block mb-1">소속 보드샵</label>
-            <input
-              type="text"
-              value={formData.shopName}
-              onChange={(e) => setFormData({ ...formData, shopName: e.target.value })}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-400"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-slate-400 font-semibold block mb-1">회차</label>
-            <input
-              type="text"
-              value={formData.lessonRound}
-              onChange={(e) => setFormData({ ...formData, lessonRound: e.target.value })}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-400"
-            />
-          </div>
-        </div>
-
-        {/* 원터치 스킬(트릭) 뱃지 선택 */}
+      <form onSubmit={handleSubmit} className="w-full max-w-md bg-white border border-stone-200/80 rounded-3xl p-6 shadow-sm space-y-6">
         <div>
-          <label className="text-xs text-slate-400 font-semibold block mb-2">
-            🏆 오늘 성공한 트릭 (터치하여 선택)
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {availableTricks.map((trick) => {
-              const isSelected = selectedTricks.includes(trick);
+          <h1 className="text-xl font-extrabold text-stone-900">🎓 강습 피드백 작성</h1>
+          <p className="text-xs text-stone-500 mt-1">수강생에게 전할 피드백 리포트를 작성하세요.</p>
+        </div>
+
+        {/* 1. 수강생 선택 */}
+        <div>
+          <label className="block text-xs font-bold text-stone-600 mb-2">👤 수강생 선택</label>
+          <div className="flex flex-wrap gap-1.5">
+            {profiles.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setStudentName(p.name)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  studentName === p.name
+                    ? 'bg-stone-900 text-white shadow-sm'
+                    : 'bg-stone-100 text-stone-600 hover:bg-stone-200/70'
+                }`}
+              >
+                {p.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 2. 강사 이름 & 회차 */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-bold text-stone-600 mb-1.5">👨‍🏫 담당 강사</label>
+            <input
+              type="text"
+              value={instructorName}
+              onChange={(e) => setInstructorName(e.target.value)}
+              className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-3.5 py-2.5 text-xs text-stone-900 focus:outline-none"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-stone-600 mb-1.5">📌 회차</label>
+            <input
+              type="text"
+              value={lessonRound}
+              onChange={(e) => setLessonRound(e.target.value)}
+              placeholder="예: 1회차"
+              className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-3.5 py-2.5 text-xs text-stone-900 focus:outline-none"
+              required
+            />
+          </div>
+        </div>
+
+        {/* 3. 📷 강습 사진 첨부 */}
+        <div>
+          <label className="block text-xs font-bold text-stone-600 mb-1.5">📷 강습/자세 사진 첨부</label>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleImageChange}
+            className="w-full text-xs text-stone-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-stone-100 file:text-stone-800 hover:file:bg-stone-200 cursor-pointer"
+          />
+          {imagePreview && (
+            <div className="mt-3 relative rounded-2xl overflow-hidden border border-stone-200 max-h-48 flex justify-center bg-stone-50">
+              <img src={imagePreview} alt="미리보기" className="object-cover w-full h-full" />
+            </div>
+          )}
+        </div>
+
+        {/* 4. 달성 트릭 선택 */}
+        <div>
+          <label className="block text-xs font-bold text-stone-600 mb-2">🏆 오늘 연습/달성한 트릭</label>
+          <div className="flex flex-wrap gap-1.5">
+            {TRICK_OPTIONS.map((trick, index) => {
+              const isSelected = selectedTricks.some((t) => t.name === trick);
               return (
                 <button
+                  key={index}
                   type="button"
-                  key={trick}
                   onClick={() => toggleTrick(trick)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
                     isSelected
-                      ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20'
-                      : 'bg-slate-800 text-slate-400 border border-slate-700 hover:border-slate-500'
+                      ? 'bg-stone-900 text-white shadow-sm'
+                      : 'bg-stone-100 text-stone-600 hover:bg-stone-200/70'
                   }`}
                 >
-                  {isSelected ? `✓ ${trick}` : `+ ${trick}`}
+                  {isSelected ? '✓ ' : ''}{trick}
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* 강사 한줄 코멘트 */}
+        {/* 5. 코치 피드백 노트 */}
         <div>
-          <label className="text-xs text-slate-400 font-semibold block mb-1">
-            💬 강사 피드백 코멘트
-          </label>
+          <label className="block text-xs font-bold text-stone-600 mb-1.5">💬 강사 피드백</label>
           <textarea
-            rows={3}
-            placeholder="오늘 아이의 폼이나 칭찬할 점을 적어주세요."
-            value={formData.instructorNote}
-            onChange={(e) => setFormData({ ...formData, instructorNote: e.target.value })}
-            className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-amber-400 resize-none"
+            rows={4}
+            placeholder="오늘의 자세 교정 포인트나 피드백을 작성해 주세요."
+            value={instructorNote}
+            onChange={(e) => setInstructorNote(e.target.value)}
+            className="w-full bg-stone-50 border border-stone-200 rounded-2xl p-3 text-xs text-stone-900 focus:outline-none"
           />
         </div>
 
-        {/* 다음 목표 */}
+        {/* 6. 다음 목표 */}
         <div>
-          <label className="text-xs text-slate-400 font-semibold block mb-1">🎯 다음 수업 목표</label>
+          <label className="block text-xs font-bold text-stone-600 mb-1.5">🎯 다음 시간 목표</label>
           <input
             type="text"
-            placeholder="예: Kickflip 회전 감각 익히기"
-            value={formData.nextGoal}
-            onChange={(e) => setFormData({ ...formData, nextGoal: e.target.value })}
-            className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-400"
+            placeholder="예: 알리 장애물 넘기 시도"
+            value={nextGoal}
+            onChange={(e) => setNextGoal(e.target.value)}
+            className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-3.5 py-2.5 text-xs text-stone-900 focus:outline-none"
           />
         </div>
 
-        {/* 저장 버튼 */}
         <button
           type="submit"
           disabled={loading}
-          className="w-full py-3.5 bg-amber-400 hover:bg-amber-300 active:scale-[0.98] text-slate-950 font-extrabold text-sm rounded-xl shadow-lg shadow-amber-400/10 transition-all"
+          className="w-full py-4 bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs rounded-2xl transition-all shadow-md active:scale-[0.98]"
         >
-          {loading ? 'Supabase DB에 저장 중...' : '🚀 강습 리포트 저장하기'}
+          {loading ? '저장 중...' : '🎓 강습 피드백 제출하기'}
         </button>
       </form>
     </div>
