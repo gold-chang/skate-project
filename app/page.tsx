@@ -24,23 +24,41 @@ export default function HomePage() {
     const { data: profData } = await supabase.from('profiles').select('*').order('name');
     if (profData) setProfiles(profData);
 
-    const { data: logsData } = await supabase
+    // 1. 개인 일지 조인 쿼리 (spots & log_tricks/tricks 조인)
+    const { data: logsData, error: logErr } = await supabase
       .from('skating_logs')
-      .select('*')
-      .order('session_date', { ascending: false })
-      .order('id', { ascending: false });
+      .select(`
+        *,
+        spots ( name ),
+        log_tricks (
+          tricks ( id, name )
+        )
+      `)
+      .order('session_date', { ascending: false });
 
-    const { data: lessonsData } = await supabase
+    if (logErr) console.error('일지 조인 에러:', logErr);
+
+    // 2. 강습 리포트 조인 쿼리 (spots & lesson_tricks/tricks 조인)
+    const { data: lessonsData, error: lessonErr } = await supabase
       .from('lesson_reports')
-      .select('*')
+      .select(`
+        *,
+        spots ( name ),
+        lesson_tricks (
+          badge,
+          tricks ( id, name )
+        )
+      `)
       .order('created_at', { ascending: false });
+
+    if (lessonErr) console.error('강습 조인 에러:', lessonErr);
 
     if (logsData) setLogs(logsData);
     if (lessonsData) setLessons(lessonsData);
     setLoading(false);
   };
 
-  const handleDeleteLog = async (id: number, e: React.MouseEvent) => {
+  const handleDeleteLog = async (id: string, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (!confirm('이 세션 일지를 삭제하시겠습니까?')) return;
@@ -54,7 +72,7 @@ export default function HomePage() {
     }
   };
 
-  const handleDeleteLesson = async (id: number, e: React.MouseEvent) => {
+  const handleDeleteLesson = async (id: string, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (!confirm('이 강습 피드백 리포트를 삭제하시겠습니까?')) return;
@@ -104,7 +122,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-[#FDFBF7] text-stone-800 flex flex-col items-center p-4 sm:p-6 font-sans">
       <main className="w-full max-w-md space-y-5">
-        {/* 스케이터 선택 */}
+        {/* 스케이터 필터 */}
         <section className="bg-white border border-stone-200/80 rounded-3xl p-4 shadow-sm space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-extrabold text-stone-900">👤 스케이터 선택</span>
@@ -144,7 +162,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* 작성하기 버튼 */}
+        {/* 작성 버튼 */}
         <div className="grid grid-cols-2 gap-2.5">
           <a
             href="/log"
@@ -260,12 +278,12 @@ export default function HomePage() {
           </button>
         </div>
 
-        {/* 히스토리 리스트 */}
+        {/* 목록 */}
         {loading ? (
           <div className="py-12 text-center text-xs text-stone-400">데이터를 가져오는 중...</div>
         ) : (
           <div className="space-y-3">
-            {/* 개인 일지 리스트 */}
+            {/* 개인 일지 카드 목록 */}
             {activeTab === 'logs' && (
               filteredLogs.length === 0 ? (
                 <div className="bg-white rounded-3xl p-8 text-center border border-stone-200/70 text-xs text-stone-400">
@@ -280,7 +298,9 @@ export default function HomePage() {
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-extrabold text-stone-900">📍 {item.spot_name}</span>
+                        <span className="text-xs font-extrabold text-stone-900">
+                          📍 {item.spots?.name || '장소 정보 없음'}
+                        </span>
                         <span className="text-[10px] bg-stone-100 text-stone-600 px-2 py-0.5 rounded-full font-bold">
                           {item.user_name}
                         </span>
@@ -303,11 +323,15 @@ export default function HomePage() {
                       </div>
                     )}
 
-                    {item.practiced_tricks?.length > 0 && (
+                    {/* 조인된 트릭 목록 출력 */}
+                    {item.log_tricks && item.log_tricks.length > 0 && (
                       <div className="flex flex-wrap gap-1.5">
-                        {item.practiced_tricks.map((trick: string, idx: number) => (
-                          <span key={idx} className="bg-stone-100 text-stone-700 text-[11px] font-semibold px-2.5 py-1 rounded-full border border-stone-200/60">
-                            {trick}
+                        {item.log_tricks.map((lt: any, idx: number) => (
+                          <span
+                            key={idx}
+                            className="bg-stone-100 text-stone-700 text-[11px] font-semibold px-2.5 py-1 rounded-full border border-stone-200/60"
+                          >
+                            {lt.tricks?.name}
                           </span>
                         ))}
                       </div>
@@ -319,7 +343,6 @@ export default function HomePage() {
                       </p>
                     )}
 
-                    {/* 📸 인스타 영상 바로가기 버튼 */}
                     {item.instagram_url && (
                       <div className="pt-1">
                         <span
@@ -339,7 +362,7 @@ export default function HomePage() {
               )
             )}
 
-            {/* 강습 피드백 리스트 */}
+            {/* 강습 피드백 카드 목록 */}
             {activeTab === 'lessons' && (
               filteredLessons.length === 0 ? (
                 <div className="bg-white rounded-3xl p-8 text-center border border-stone-200/70 text-xs text-stone-400">
@@ -370,7 +393,7 @@ export default function HomePage() {
 
                     <div className="text-xs text-stone-500 flex flex-wrap gap-2">
                       {item.instructor_name && <span>강사: <strong className="text-stone-800">{item.instructor_name}</strong></span>}
-                      {item.spot_name && <span>📍 <strong className="text-stone-800">{item.spot_name}</strong></span>}
+                      {item.spots?.name && <span>📍 <strong className="text-stone-800">{item.spots.name}</strong></span>}
                     </div>
 
                     {item.image_url && (
@@ -379,14 +402,18 @@ export default function HomePage() {
                       </div>
                     )}
 
-                    {item.mastered_tricks && item.mastered_tricks.length > 0 && (
+                    {/* 조인된 트릭 목록 출력 */}
+                    {item.lesson_tricks && item.lesson_tricks.length > 0 && (
                       <div className="flex flex-wrap gap-1.5">
-                        {item.mastered_tricks.map((trickObj: any, idx: number) => (
-                          <span key={idx} className="bg-stone-100 text-stone-700 text-[11px] font-semibold px-2.5 py-1 rounded-full border border-stone-200/60 flex items-center gap-1">
-                            <span>{typeof trickObj === 'string' ? trickObj : trickObj.name}</span>
-                            {trickObj.badge && (
+                        {item.lesson_tricks.map((lt: any, idx: number) => (
+                          <span
+                            key={idx}
+                            className="bg-stone-100 text-stone-700 text-[11px] font-semibold px-2.5 py-1 rounded-full border border-stone-200/60 flex items-center gap-1"
+                          >
+                            <span>{lt.tricks?.name}</span>
+                            {lt.badge && (
                               <span className="text-[9px] bg-stone-200 text-stone-600 px-1 py-0.2 rounded font-bold">
-                                {trickObj.badge}
+                                {lt.badge}
                               </span>
                             )}
                           </span>
@@ -401,7 +428,6 @@ export default function HomePage() {
                       </div>
                     )}
 
-                    {/* 📸 인스타 영상 바로가기 버튼 */}
                     {item.instagram_url && (
                       <div className="pt-1">
                         <span

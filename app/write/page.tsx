@@ -8,22 +8,23 @@ export default function LessonWritePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
-  // DB 데이터 목록
   const [profiles, setProfiles] = useState<any[]>([]);
   const [spots, setSpots] = useState<any[]>([]);
   const [tricksList, setTricksList] = useState<any[]>([]);
 
-  // 폼 입력값
   const [studentName, setStudentName] = useState('');
   const [shopName, setShopName] = useState('스케이트보드 아카데미');
   const [instructorName, setInstructorName] = useState('');
-  const [selectedSpotId, setSelectedSpotId] = useState('');
   const [lessonRound, setLessonRound] = useState('1회차');
 
-  // 선택된 트릭
-  const [selectedTricks, setSelectedTricks] = useState<{ id: number; name: string; badge: string }[]>([]);
-  const [trickSelectId, setTrickSelectId] = useState('');
+  // 장소 검색 & 선택
+  const [spotSearch, setSpotSearch] = useState('');
+  const [selectedSpot, setSelectedSpot] = useState<any>(null);
+
+  // 기술 검색 & 선택
+  const [trickSearch, setTrickSearch] = useState('');
   const [selectedBadge, setSelectedBadge] = useState('성공');
+  const [selectedTricks, setSelectedTricks] = useState<any[]>([]);
 
   const [instructorNote, setInstructorNote] = useState('');
   const [nextGoal, setNextGoal] = useState('');
@@ -55,19 +56,22 @@ export default function LessonWritePage() {
     }
   };
 
-  const handleAddTrick = () => {
-    if (!trickSelectId) return;
-    const found = tricksList.find((t) => String(t.id) === trickSelectId);
-    if (found && !selectedTricks.some((t) => t.id === found.id)) {
-      setSelectedTricks([
-        ...selectedTricks,
-        { id: found.id, name: found.name, badge: selectedBadge },
-      ]);
-    }
-    setTrickSelectId('');
+  const filteredSpots = spots.filter((s) =>
+    s.name.toLowerCase().includes(spotSearch.toLowerCase())
+  );
+
+  const filteredTricks = tricksList.filter(
+    (t) =>
+      t.name.toLowerCase().includes(trickSearch.toLowerCase()) &&
+      !selectedTricks.some((st) => st.id === t.id)
+  );
+
+  const handleAddTrick = (trick: any) => {
+    setSelectedTricks([...selectedTricks, { ...trick, badge: selectedBadge }]);
+    setTrickSearch('');
   };
 
-  const handleRemoveTrick = (id: number) => {
+  const handleRemoveTrick = (id: string) => {
     setSelectedTricks(selectedTricks.filter((t) => t.id !== id));
   };
 
@@ -75,7 +79,7 @@ export default function LessonWritePage() {
     e.preventDefault();
 
     if (!studentName) return alert('수강생 이름을 선택해 주세요.');
-    if (!selectedSpotId) return alert('연습 장소를 선택해 주세요.');
+    if (!selectedSpot) return alert('연습 장소를 선택해 주세요.');
 
     setLoading(true);
 
@@ -98,30 +102,39 @@ export default function LessonWritePage() {
         }
       }
 
-      const targetSpot = spots.find((s) => String(s.id) === selectedSpotId);
+      // 1. 강습 피드백 테이블 저장
+      const { data: lessonData, error: dbError } = await supabase
+        .from('lesson_reports')
+        .insert([
+          {
+            shop_name: shopName,
+            student_name: studentName,
+            instructor_name: instructorName,
+            spot_id: selectedSpot.id, // UUID 장소 참조
+            lesson_round: lessonRound,
+            instructor_note: instructorNote,
+            next_goal: nextGoal,
+            image_url: finalImageUrl,
+            instagram_url: instagramUrl,
+          },
+        ])
+        .select()
+        .single();
 
-      const { error: dbError } = await supabase.from('lesson_reports').insert([
-        {
-          shop_name: shopName,
-          student_name: studentName,
-          instructor_name: instructorName,
-          spot_id: Number(selectedSpotId), // 👈 spot_id 저장
-          spot_name: targetSpot?.name || '',
-          lesson_round: lessonRound,
-          mastered_tricks: selectedTricks, // 👈 구조화된 기술 목록 저장
-          instructor_note: instructorNote,
-          next_goal: nextGoal,
-          image_url: finalImageUrl,
-          instagram_url: instagramUrl,
-        },
-      ]);
+      if (dbError) throw dbError;
 
-      if (dbError) {
-        alert('DB 저장 중 오류 발생: ' + dbError.message);
-      } else {
-        alert('🎓 강습 피드백 리포트가 등록되었습니다!');
-        router.push('/');
+      // 2. 선택한 트릭 교차 테이블(lesson_tricks) 등록
+      if (selectedTricks.length > 0 && lessonData) {
+        const trickRows = selectedTricks.map((t) => ({
+          lesson_id: lessonData.id,
+          trick_id: t.id,
+          badge: t.badge,
+        }));
+        await supabase.from('lesson_tricks').insert(trickRows);
       }
+
+      alert('🎓 강습 피드백 리포트가 등록되었습니다!');
+      router.push('/');
     } catch (err: any) {
       alert('오류 발생: ' + err.message);
     } finally {
@@ -172,22 +185,49 @@ export default function LessonWritePage() {
             />
           </div>
 
-          {/* 연습 장소 (DB Spots ID 기반) */}
-          <div>
-            <label className="block text-xs font-bold text-stone-600 mb-1">📍 연습 장소 (스팟) *</label>
-            <select
-              value={selectedSpotId}
-              onChange={(e) => setSelectedSpotId(e.target.value)}
-              className="w-full p-3 bg-stone-50 border border-stone-200 rounded-2xl text-xs focus:outline-none"
-              required
-            >
-              <option value="">장소를 선택하세요</option>
-              {spots.map((spot) => (
-                <option key={spot.id} value={spot.id}>
-                  {spot.name}
-                </option>
-              ))}
-            </select>
+          {/* 📍 장소 검색 및 선택 */}
+          <div className="space-y-1.5">
+            <label className="block text-xs font-bold text-stone-600">📍 연습 장소 (스팟) 검색 *</label>
+            {selectedSpot ? (
+              <div className="flex items-center justify-between bg-stone-900 text-white p-3 rounded-2xl text-xs font-bold">
+                <span>📍 {selectedSpot.name}</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSpot(null)}
+                  className="text-stone-400 hover:text-white"
+                >
+                  변경 ✕
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <input
+                  type="text"
+                  value={spotSearch}
+                  onChange={(e) => setSpotSearch(e.target.value)}
+                  placeholder="파크 이름 검색..."
+                  className="w-full p-3 bg-stone-50 border border-stone-200 rounded-2xl text-xs focus:outline-none"
+                />
+                <div className="max-h-32 overflow-y-auto border border-stone-100 rounded-2xl divide-y divide-stone-100 bg-stone-50">
+                  {filteredSpots.length === 0 ? (
+                    <div className="p-3 text-xs text-stone-400">검색 결과가 없습니다.</div>
+                  ) : (
+                    filteredSpots.map((spot) => (
+                      <div
+                        key={spot.id}
+                        onClick={() => {
+                          setSelectedSpot(spot);
+                          setSpotSearch('');
+                        }}
+                        className="p-2.5 text-xs font-semibold text-stone-700 hover:bg-stone-200/60 cursor-pointer"
+                      >
+                        {spot.name}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* 레슨 회차 */}
@@ -202,55 +242,64 @@ export default function LessonWritePage() {
             />
           </div>
 
-          {/* 연습/달성한 트릭 (DB Tricks 선택) */}
+          {/* 🔥 기술 검색 및 추가 */}
           <div className="space-y-2">
             <label className="block text-xs font-bold text-stone-600">🏆 연습 및 달성한 트릭</label>
-            <div className="flex gap-2">
-              <select
-                value={trickSelectId}
-                onChange={(e) => setTrickSelectId(e.target.value)}
-                className="flex-1 p-3 bg-stone-50 border border-stone-200 rounded-2xl text-xs focus:outline-none"
-              >
-                <option value="">등록된 기술 선택</option>
-                {tricksList.map((trick) => (
-                  <option key={trick.id} value={trick.id}>
-                    {trick.name}
-                  </option>
-                ))}
-              </select>
+            <div className="flex gap-2 mb-1">
               <select
                 value={selectedBadge}
                 onChange={(e) => setSelectedBadge(e.target.value)}
-                className="p-3 bg-stone-50 border border-stone-200 rounded-2xl text-xs focus:outline-none"
+                className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs focus:outline-none"
               >
                 <option value="성공">성공</option>
                 <option value="연습중">연습중</option>
                 <option value="완성도UP">완성도UP</option>
               </select>
-              <button
-                type="button"
-                onClick={handleAddTrick}
-                className="px-4 py-3 bg-stone-900 text-white font-bold text-xs rounded-2xl hover:bg-stone-800"
-              >
-                추가
-              </button>
             </div>
 
+            <input
+              type="text"
+              value={trickSearch}
+              onChange={(e) => setTrickSearch(e.target.value)}
+              placeholder="기술 이름 검색 후 클릭하여 추가..."
+              className="w-full p-3 bg-stone-50 border border-stone-200 rounded-2xl text-xs focus:outline-none"
+            />
+
+            {trickSearch.trim() && (
+              <div className="max-h-32 overflow-y-auto border border-stone-100 rounded-2xl divide-y divide-stone-100 bg-stone-50">
+                {filteredTricks.length === 0 ? (
+                  <div className="p-3 text-xs text-stone-400">일치하는 기술이 없습니다.</div>
+                ) : (
+                  filteredTricks.map((trick) => (
+                    <div
+                      key={trick.id}
+                      onClick={() => handleAddTrick(trick)}
+                      className="p-2.5 text-xs font-semibold text-stone-700 hover:bg-stone-200/60 cursor-pointer flex justify-between items-center"
+                    >
+                      <span>{trick.name}</span>
+                      <span className="text-[10px] bg-stone-900 text-white px-1.5 py-0.5 rounded">
+                        +{selectedBadge}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {/* 선택된 기술 칩 */}
             {selectedTricks.length > 0 && (
-              <div className="flex flex-wrap gap-2 pt-2">
-                {selectedTricks.map((item) => (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {selectedTricks.map((trick) => (
                   <span
-                    key={item.id}
-                    className="bg-stone-100 text-stone-800 text-xs px-3 py-1.5 rounded-full border border-stone-200 flex items-center gap-1.5 font-medium"
+                    key={trick.id}
+                    className="bg-stone-900 text-white text-xs px-3 py-1.5 rounded-full flex items-center gap-1.5 font-semibold"
                   >
-                    <span>{item.name}</span>
-                    <span className="text-[10px] bg-stone-200 px-1.5 py-0.5 rounded font-bold text-stone-600">
-                      {item.badge}
-                    </span>
+                    <span>{trick.name}</span>
+                    <span className="text-[10px] bg-stone-700 px-1.5 py-0.2 rounded">{trick.badge}</span>
                     <button
                       type="button"
-                      onClick={() => handleRemoveTrick(item.id)}
-                      className="text-stone-400 hover:text-red-500 font-bold ml-1"
+                      onClick={() => handleRemoveTrick(trick.id)}
+                      className="text-stone-400 hover:text-white"
                     >
                       ✕
                     </button>
